@@ -280,6 +280,18 @@ describe('better-shell tool definitions', () => {
     ]);
   });
 
+  it('documents the exact shell profiles in tool schemas', () => {
+    const items = definitions(new FakeJobs(), fakeShellService());
+    const execute = tool(items, 'shell_execute');
+    const session = tool(items, 'shell_session');
+    expect(execute.parameters['properties']).toMatchObject({
+      shell_profile: { enum: ['pwsh7', 'windowsPowerShell', 'cmd'] },
+    });
+    expect(session.parameters['properties']).toMatchObject({
+      shell_profile: { enum: ['pwsh7', 'windowsPowerShell', 'cmd'] },
+    });
+  });
+
   it('requests approval through the DSH service for session creation and command execution', async () => {
     const request = vi.fn((_request: { readonly toolName: string }) => {
       void _request;

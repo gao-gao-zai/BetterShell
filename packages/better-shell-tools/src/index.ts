@@ -754,7 +754,11 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
         description: 'single starts one process; execute uses an existing PTY session.',
       },
       command: { type: 'string', required: true, description: 'Non-empty shell command text.' },
-      shell_profile: { type: 'string', description: PROFILE_DESCRIPTION + ' Single mode only.' },
+      shell_profile: {
+        type: 'string',
+        enum: Object.keys(DEFAULT_PROFILES),
+        description: PROFILE_DESCRIPTION + ' Single mode only.',
+      },
       session_name: { type: 'string', description: 'Owner-scoped PTY session name.' },
       run_mode: {
         type: 'string',
@@ -1125,7 +1129,11 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
     parameters: {
       operation: { type: 'string', enum: ['create', 'list', 'delete', 'cancel'], required: true },
       session_name: { type: 'string' },
-      shell_profile: { type: 'string', description: PROFILE_DESCRIPTION },
+      shell_profile: {
+        type: 'string',
+        enum: Object.keys(DEFAULT_PROFILES),
+        description: PROFILE_DESCRIPTION,
+      },
       cwd: { type: 'string' },
       env: {
         type: 'object',

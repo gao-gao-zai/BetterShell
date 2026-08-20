@@ -4,3 +4,11 @@
 
     - id: better-shell-tools
       name: '@gao-gao-zai/better-shell-tools'
+
+    - id: better-shell-skills
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        providerName: better-shell
+        includeDefaultRoots: false
+        customSkillDirs:
+          - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
