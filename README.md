@@ -63,6 +63,16 @@ Load `@gao-gao-zai/better-shell-terminal` before `@gao-gao-zai/better-shell-tool
 
 At least one configured shell profile must be available on the Windows host, such as PowerShell 7 (`pwsh7`), Windows PowerShell, or `cmd.exe`.
 
+### Permission behavior
+
+BetterShell follows the DSH host permission mode:
+
+- In `workspace-write` or `read-only`, shell session creation and command execution go through DSH approval and can show a Web UI approval prompt.
+- In `danger-full-access`, BetterShell checks the current Agent/session Sandbox mode and executes directly without an approval prompt.
+- If the current Sandbox mode cannot be resolved, BetterShell fails closed and keeps using DSH approval.
+
+The `danger-full-access` exception is deliberately based on the effective Sandbox mode for the current Agent/session, not only the `DSH_PERMISSION_MODE` environment variable. BetterShell does not redefine DSH's `approval.never` policy; it treats an explicitly unconfined Sandbox as the host's direct-allow mode while preserving its own Shell profile, cwd, output, timeout, and concurrency limits.
+
 ## Development
 
 ```powershell

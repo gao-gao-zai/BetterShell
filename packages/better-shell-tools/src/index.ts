@@ -703,6 +703,20 @@ function registerPtyJob(
   return { id, operation };
 }
 
+function allowsUnpromptedShell(ctx: Context, agent: Agent): boolean {
+  const context = ctx as unknown as {
+    readonly sandboxPolicy?: {
+      resolve(request: { readonly session: Agent['session'] }): { readonly mode?: string };
+    };
+    readonly shell?: { readonly sandboxMode?: string };
+  };
+  const resolved = context.sandboxPolicy?.resolve({ session: agent.session });
+  return (
+    resolved?.mode === 'danger-full-access' ||
+    (resolved === undefined && context.shell?.sandboxMode === 'danger-full-access')
+  );
+}
+
 async function authorizeCommand(
   ctx: Context,
   agent: Agent,
@@ -711,6 +725,7 @@ async function authorizeCommand(
   toolName = 'shell_execute',
   callId?: ToolRunContext['callId'],
 ): Promise<void> {
+  if (allowsUnpromptedShell(ctx, agent)) return;
   const approval = ctx.approval;
   const request = {
     agent,
@@ -1312,5 +1327,12 @@ export function apply(ctx: Context): void {
 }
 
 export const name = 'better-shell-tools';
-export const inject = ['betterShell', 'tools', 'shell', 'jobs', 'approval'] as const;
+export const inject = [
+  'betterShell',
+  'tools',
+  'shell',
+  'jobs',
+  'approval',
+  'sandboxPolicy',
+] as const;
 export default { name, inject, apply };

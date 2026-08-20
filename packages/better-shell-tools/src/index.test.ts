@@ -220,16 +220,29 @@ function allowedApproval(): ApprovalStub {
   };
 }
 
+interface ShellStub {
+  readonly sandboxMode?: string;
+}
+
+interface SandboxPolicyStub {
+  readonly resolve: (request: { readonly session: Agent['session'] }) => {
+    readonly mode: string;
+  };
+}
+
 function definitions(
   jobs: FakeJobs,
   betterShell: BetterShellService,
   approval: ApprovalStub = allowedApproval(),
+  shell: ShellStub = {},
+  sandboxPolicy?: SandboxPolicyStub,
 ): readonly ToolDefinition[] {
   const ctx = {
     jobs,
     betterShell,
     approval,
-    shell: {},
+    shell,
+    ...(sandboxPolicy === undefined ? {} : { sandboxPolicy }),
   } as unknown as Context;
   return createToolDefinitions(ctx);
 }
@@ -288,6 +301,29 @@ describe('better-shell tool definitions', () => {
     expect(request.mock.calls[0]?.[0]).toMatchObject({ toolName: 'shell_session' });
     expect(request.mock.calls[1]?.[0]).toMatchObject({ toolName: 'shell_execute' });
   });
+  it('allows shell operations without approval in danger-full-access', async () => {
+    const request = vi.fn(() => Promise.resolve('rejected'));
+    const items = definitions(
+      new FakeJobs(),
+      fakeShellService(),
+      {
+        config: { policy: 'never' },
+        request,
+      },
+      { sandboxMode: 'danger-full-access' },
+    );
+    const owner = agent();
+    await createSession(items, owner);
+    const result = await run(
+      tool(items, 'shell_execute'),
+      { mode: 'execute', command: 'echo hello', session_name: 'main', run_mode: 'background' },
+      owner,
+    );
+
+    expect(result).toMatchObject({ status: 'background' });
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it('starts a PTY command inside the accepted background job', async () => {
     const jobs = new FakeJobs();
     const execute = vi.fn(() => operation());
