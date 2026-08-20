@@ -27,6 +27,42 @@ BetterShell provides two plugins:
 - pnpm 11 or newer.
 - DSH with the compatible `@deepseek-ai/*` peer dependencies.
 
+## Installation
+
+BetterShell is not yet published to npm. Install it from this repository or from the generated local tarballs.
+
+### Build from source
+
+```powershell
+git clone https://github.com/gao-gao-zai/BetterShell.git
+cd BetterShell
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+The build output for each plugin is written to its package `lib/` directory.
+
+### Install the generated tarballs
+
+The repository build creates the following installable artifacts:
+
+```text
+.artifacts/gao-gao-zai-better-shell-terminal-0.1.0.tgz
+.artifacts/gao-gao-zai-better-shell-tools-0.1.0.tgz
+```
+
+From the compatible DSH host project, install both packages together:
+
+```powershell
+pnpm add `
+  E:\\DeepSeekHarness\\BetterShell\\.artifacts\\gao-gao-zai-better-shell-terminal-0.1.0.tgz `
+  E:\\DeepSeekHarness\\BetterShell\\.artifacts\\gao-gao-zai-better-shell-tools-0.1.0.tgz
+```
+
+Load `@gao-gao-zai/better-shell-terminal` before `@gao-gao-zai/better-shell-tools`. The terminal plugin provides the `betterShell` service consumed by the tool plugin. The DSH host must provide compatible `@deepseek-ai/*` peer dependencies.
+
+At least one configured shell profile must be available on the Windows host, such as PowerShell 7 (`pwsh7`), Windows PowerShell, or `cmd.exe`.
+
 ## Development
 
 ```powershell
