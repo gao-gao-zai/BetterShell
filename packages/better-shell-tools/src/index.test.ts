@@ -298,8 +298,7 @@ describe('better-shell tool definitions', () => {
       run(tool(items, 'shell_session'), { operation: 'create', session_name: 'main' }, agent()),
     ).rejects.toThrow('SHELL_PROFILE_REQUIRED');
   });
-
-
+  it('requests approval through the DSH service for session creation and command execution', async () => {
     const request = vi.fn((_request: { readonly toolName: string }) => {
       void _request;
       return Promise.resolve('allowed-once');
