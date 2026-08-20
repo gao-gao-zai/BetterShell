@@ -1,0 +1,6 @@
+- insert:
+    - id: better-shell-terminal
+      name: '@gao-gao-zai/better-shell-terminal'
+
+    - id: better-shell-tools
+      name: '@gao-gao-zai/better-shell-tools'

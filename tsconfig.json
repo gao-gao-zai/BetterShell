@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["vitest.config.ts", "vitest.integration.config.ts"],
+  "references": [
+    { "path": "./packages/better-shell-terminal/tsconfig.build.json" },
+    { "path": "./packages/better-shell-tools/tsconfig.build.json" }
+  ]
+}

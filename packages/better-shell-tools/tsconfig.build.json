@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "lib",
+    "tsBuildInfoFile": "../../node_modules/.cache/better-shell-tools.tsbuildinfo",
+    "paths": {}
+  },
+  "exclude": ["src/**/*.test.ts", "src/**/*.fixture.ts"]
+}
