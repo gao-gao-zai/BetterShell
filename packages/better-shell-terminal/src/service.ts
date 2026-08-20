@@ -34,8 +34,10 @@ interface CommandRecord {
   readonly sessionId: SessionId;
   readonly command: string;
   readonly marker: string;
+  readonly startMarker: string;
   readonly startedAt: number;
   lastActivityAt: number;
+  started: boolean;
   readonly output: BoundedText;
   readonly resolve: (snapshot: CommandSnapshot) => void;
   readonly done: Promise<CommandSnapshot>;
@@ -147,13 +149,26 @@ function validateCreateRequest(
   validateProcessOptions(request, allowedCwdRoots);
 }
 
-function commandLine(kind: ShellKind, command: string, marker: string): string {
+function commandLine(
+  kind: ShellKind,
+  command: string,
+  marker: string,
+  startMarker: string,
+): string {
   if (kind === 'powershell') {
-    const encoded = Buffer.from(command, 'utf8').toString('base64');
-    return `$__dsh_b=[Convert]::FromBase64String('${encoded}'); $__dsh_c=0; try { . ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString($__dsh_b))); $__dsh_c=if($LASTEXITCODE -is [int]){$LASTEXITCODE}elseif($?){0}else{1} } catch { $__dsh_c=1; Write-Error $_ }; [Console]::WriteLine(('{0}{1}__' -f '${marker}',$__dsh_c))`;
+    const encodedCommand = Buffer.from(command, 'utf8').toString('base64');
+    const script = `[Console]::Write('${startMarker}'); $__dsh_b=[Convert]::FromBase64String('${encodedCommand}'); $__dsh_c=0; try { . ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString($__dsh_b))); $__dsh_c=if($LASTEXITCODE -is [int]){$LASTEXITCODE}elseif($?){0}else{1} } catch { $__dsh_c=1; Write-Error $_ }; [Console]::WriteLine(('{0}{1}__' -f '${marker}',$__dsh_c))`;
+    const encodedScript = Buffer.from(script, 'utf8').toString('base64');
+    return `$__dsh_x=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedScript}')); . ([ScriptBlock]::Create($__dsh_x))`;
   }
   if (kind === 'cmd') {
-    return `${command}\rset "__dsh_c=%ERRORLEVEL%"\recho ${marker}%__dsh_c%__`;
+    const split = Math.ceil(startMarker.length / 2);
+    const first = startMarker.slice(0, split);
+    const second = startMarker.slice(split);
+    const markerSplit = Math.ceil(marker.length / 2);
+    const markerFirst = marker.slice(0, markerSplit);
+    const markerSecond = marker.slice(markerSplit);
+    return `set "__dsh_a=${first}"\rset "__dsh_b=${second}"\rset "__dsh_c=${markerFirst}"\rset "__dsh_d=${markerSecond}"\recho %__dsh_a%%__dsh_b%\r${command}\rif errorlevel 1 echo %__dsh_c%%__dsh_d%1__\rif not errorlevel 1 echo %__dsh_c%%__dsh_d%0__\rset "__dsh_a="\rset "__dsh_b="\rset "__dsh_c="\rset "__dsh_d="`;
   }
   throw new Error('raw profiles do not support wrapped command execution');
 }
@@ -335,6 +350,7 @@ export class LocalBetterShellService implements BetterShellService {
       .padStart(3, '0') as CommandId;
     session.nextCommandNumber += 1;
     const marker = `__DSH_DONE_${randomBytes(10).toString('hex')}_`;
+    const startMarker = `__DSH_START_${randomBytes(10).toString('hex')}_`;
     let resolveDone!: (snapshot: CommandSnapshot) => void;
     const done = new Promise<CommandSnapshot>((resolve) => {
       resolveDone = resolve;
@@ -344,8 +360,10 @@ export class LocalBetterShellService implements BetterShellService {
       sessionId,
       command,
       marker,
+      startMarker,
       startedAt: Date.now(),
       lastActivityAt: Date.now(),
+      started: false,
       output: new BoundedText(this.config.maxCommandOutputBytes),
       resolve: resolveDone,
       done,
@@ -356,7 +374,7 @@ export class LocalBetterShellService implements BetterShellService {
     session.active = commandRecord;
     session.markerBuffer = '';
     try {
-      session.process.write(`${commandLine(session.kind, command, marker)}\r`);
+      session.process.write(`${commandLine(session.kind, command, marker, startMarker)}\r`);
     } catch (error) {
       this.finishCommand(session, commandRecord, 'failed', undefined, String(error));
     }
@@ -668,6 +686,21 @@ export class LocalBetterShellService implements BetterShellService {
     }
     command.lastActivityAt = session.lastActivityAt;
     session.markerBuffer += data;
+
+    if (!command.started) {
+      const startIndex = session.markerBuffer.indexOf(command.startMarker);
+      if (startIndex < 0) {
+        const keepCharacters = Math.max(0, command.startMarker.length - 1);
+        if (session.markerBuffer.length > keepCharacters) {
+          session.markerBuffer = session.markerBuffer.slice(-keepCharacters);
+        }
+        this.notifyChange(session);
+        return;
+      }
+      command.started = true;
+      session.markerBuffer = session.markerBuffer.slice(startIndex + command.startMarker.length);
+    }
+
     let searchFrom = 0;
     let markerIndex = -1;
     let completion: RegExpExecArray | null = null;
@@ -686,7 +719,7 @@ export class LocalBetterShellService implements BetterShellService {
     if (markerIndex < 0 || completion === null) {
       const keepCharacters = command.marker.length + 32;
       const emitLength = Math.max(0, session.markerBuffer.length - keepCharacters);
-      command.output.append(session.markerBuffer.slice(0, emitLength));
+      if (emitLength > 0) command.output.append(session.markerBuffer.slice(0, emitLength));
       session.markerBuffer = session.markerBuffer.slice(emitLength);
       this.notifyChange(session);
       return;
@@ -696,7 +729,6 @@ export class LocalBetterShellService implements BetterShellService {
     session.markerBuffer = markerTail.slice(completion[0].length);
     const code = Number.parseInt(completion[1] ?? '1', 10);
     this.finishCommand(session, command, code === 0 ? 'completed' : 'failed', code);
-    if (session.markerBuffer.length > 0) session.output.append(session.markerBuffer);
     session.markerBuffer = '';
     this.notifyChange(session);
   }

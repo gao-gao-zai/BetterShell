@@ -27,6 +27,7 @@ describe.skipIf(process.platform !== 'win32')('Windows ConPTY integration', () =
       expect(command.status).toBe('completed');
       expect(command.exitCode).toBe(0);
       expect(command.output).toContain('BETTER_SHELL_OK');
+      expect(command.output).not.toContain('__DSH_');
       expect(service.list(agent)).toHaveLength(1);
     } finally {
       await service.closeOwner(agent);

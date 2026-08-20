@@ -71,12 +71,16 @@ describe('LocalBetterShellService', () => {
     const agent = fakeAgent();
     const session = await service.create(agent, { name: 'build', profile: 'test' });
     const operation = service.execute(agent, session.id, 'Write-Output hello');
-    expect(pty.writes[0]).toContain('V3JpdGUtT3V0cHV0IGhlbGxv');
+    expect(pty.writes[0]).toContain('FromBase64String');
     await service.write(agent, session.id, { control: 'ENTER' });
     expect(pty.writes[1]).toBe('\r');
-    const marker = /(__DSH_DONE_[a-f0-9]+_)/.exec(pty.writes[0] ?? '')?.[1];
-    if (marker === undefined) throw new Error('marker missing');
-    pty.emit('hello\r\n' + marker + '0__');
+    const encodedScript = /FromBase64String\('([^']+)'\)/.exec(pty.writes[0] ?? '')?.[1];
+    if (encodedScript === undefined) throw new Error('encoded script missing');
+    const script = Buffer.from(encodedScript, 'base64').toString('utf8');
+    const startMarker = /(__DSH_START_[a-f0-9]+_)/.exec(script)?.[1];
+    const marker = /(__DSH_DONE_[a-f0-9]+_)/.exec(script)?.[1];
+    if (startMarker === undefined || marker === undefined) throw new Error('markers missing');
+    pty.emit('echoed wrapper\r\n' + startMarker + 'hello\r\n' + marker + '0__');
     await expect(operation.done).resolves.toMatchObject({
       status: 'completed',
       output: 'hello\r\n',

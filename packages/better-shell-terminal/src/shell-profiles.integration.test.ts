@@ -30,6 +30,8 @@ describe.skipIf(process.platform !== 'win32')('Windows shell profile integration
       expect(command.status).toBe('completed');
       expect(command.exitCode).toBe(0);
       expect(command.output).toContain('BETTER_SHELL_');
+      expect(command.output).not.toContain('__DSH_');
+      expect(command.output).not.toContain('FromBase64String');
       expect(service.list(agent)).toHaveLength(1);
     } finally {
       await service.closeOwner(agent);

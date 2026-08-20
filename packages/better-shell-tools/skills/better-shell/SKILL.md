@@ -95,6 +95,8 @@ Read command output:
 }
 ```
 
+Command output is the PTY text produced between the internal start and completion markers. BetterShell filters its own wrapper script, prompt redraw, and internal markers from command output; ANSI sequences explicitly emitted by the shell command may remain.
+
 Use the returned `next_cursor` for the next incremental read. Do not invent alternate field names such as `profile`, `shell`, `action`, `name`, or `command_text`.
 
 ## Permission Behavior
