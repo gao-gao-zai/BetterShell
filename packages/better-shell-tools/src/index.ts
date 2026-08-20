@@ -11,14 +11,15 @@ import {
   type ToolDefinition,
   type ToolRunContext,
 } from '@deepseek-ai/dsh-tools';
-import type {
-  CommandId,
-  CommandOperation,
-  CommandSnapshot,
-  SessionId,
-  SessionSnapshot,
-  SingleProcess,
-  WriteRequest,
+import {
+  DEFAULT_PROFILES,
+  type CommandId,
+  type CommandOperation,
+  type CommandSnapshot,
+  type SessionId,
+  type SessionSnapshot,
+  type SingleProcess,
+  type WriteRequest,
 } from '@gao-gao-zai/better-shell-terminal';
 import '@gao-gao-zai/better-shell-terminal';
 
@@ -41,6 +42,11 @@ interface OwnerState {
   readonly cursors: Map<string, ReadCursorState>;
   nextCursorNumber: number;
 }
+
+const PROFILE_NAMES = Object.keys(DEFAULT_PROFILES).join(', ');
+const PROFILE_DESCRIPTION =
+  `Available profiles: ${PROFILE_NAMES}. Use the exact profile name; ` +
+  '`pwsh7` is PowerShell 7, `windowsPowerShell` is Windows PowerShell 5.1, and `cmd` is cmd.exe.';
 
 const states = new WeakMap<Agent, OwnerState>();
 const stateCleanupInstalled = new WeakSet<Agent>();
@@ -702,6 +708,8 @@ async function authorizeCommand(
   agent: Agent,
   command: string,
   signal: AbortSignal,
+  toolName = 'shell_execute',
+  callId?: string,
 ): Promise<void> {
   const approval = (
     ctx as unknown as {
@@ -710,6 +718,7 @@ async function authorizeCommand(
         request(request: {
           agent: Agent;
           toolName: string;
+          callId?: string;
           reason: string;
           signal: AbortSignal;
         }): Promise<string>;
@@ -719,8 +728,9 @@ async function authorizeCommand(
   if (approval?.config.policy !== 'ask') return;
   const outcome = await approval.request({
     agent,
-    toolName: 'shell_execute',
-    reason: `Execute Shell command: ${command.slice(0, 200)}`,
+    toolName,
+    ...(callId === undefined ? {} : { callId }),
+    reason: `${toolName}: ${command.slice(0, 200)}`,
     signal,
   });
   if (outcome !== 'allowed-once') throw new Error('APPROVAL_REJECTED');
@@ -731,7 +741,7 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
   const limits = `Active limits: foreground wait ${String(active.waitTimeoutMs)}ms; background inactivity ${String(active.backgroundTimeoutMs)}ms; absolute runtime ${String(active.maxRuntimeMs)}ms; read wait ${String(active.readWaitMs)}ms; write timeout ${String(active.writeTimeoutMs)}ms; response output ${String(active.outputBytes)} bytes; write input ${String(active.maxWriteBytes)} bytes; ${String(active.maxSessions)} PTY sessions per Agent; ${String(active.maxCommandHistory)} retained commands per session; ${String(active.maxConcurrentJobs)} concurrent Shell jobs per Agent.`;
   const shellExecute = defineTool({
     name: 'shell_execute',
-    description: `Execute a Shell command in single or persistent PTY mode. Wait timeouts detach without cancelling the command. ${limits}`,
+    description: `Execute a Shell command in single or persistent PTY mode. ${PROFILE_DESCRIPTION} Wait timeouts detach without cancelling the command. ${limits}`,
     parameters: {
       mode: {
         type: 'string',
@@ -740,7 +750,7 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
         description: 'single starts one process; execute uses an existing PTY session.',
       },
       command: { type: 'string', required: true, description: 'Non-empty shell command text.' },
-      shell_profile: { type: 'string', description: 'Configured profile name; single mode only.' },
+      shell_profile: { type: 'string', description: PROFILE_DESCRIPTION + ' Single mode only.' },
       session_name: { type: 'string', description: 'Owner-scoped PTY session name.' },
       run_mode: {
         type: 'string',
@@ -778,7 +788,7 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
       )
         throw new Error('SESSION_ARGUMENT_INVALID');
       const settings = ctx.betterShell.settings();
-      await authorizeCommand(ctx, agent, args.command, exec.signal);
+      await authorizeCommand(ctx, agent, args.command, exec.signal, 'shell_execute', exec.callId);
       const maxRuntime = boundedLimit(
         args.max_runtime_ms,
         settings.maxRuntimeMs,
@@ -1107,11 +1117,11 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
 
   const shellSession = defineTool({
     name: 'shell_session',
-    description: `Create, list, delete, or cancel owner-scoped PTY sessions and commands. ${limits}`,
+    description: `Create, list, delete, or cancel owner-scoped PTY sessions and commands. ${PROFILE_DESCRIPTION} ${limits}`,
     parameters: {
       operation: { type: 'string', enum: ['create', 'list', 'delete', 'cancel'], required: true },
       session_name: { type: 'string' },
-      shell_profile: { type: 'string' },
+      shell_profile: { type: 'string', description: PROFILE_DESCRIPTION },
       cwd: { type: 'string' },
       env: {
         type: 'object',
@@ -1165,6 +1175,14 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
           args.list_cursor !== undefined
         )
           throw new Error('SESSION_ARGUMENT_INVALID');
+        await authorizeCommand(
+          ctx,
+          agent,
+          `Create ${args.shell_profile} shell session: ${args.session_name}`,
+          exec.signal,
+          'shell_session',
+          exec.callId,
+        );
         const value = await ctx.betterShell.create(agent, {
           name: args.session_name,
           profile: args.shell_profile,
