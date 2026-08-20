@@ -219,6 +219,10 @@ interface ShellErrorDescriptor {
 const ERROR_MESSAGES: Readonly<Record<string, Omit<ShellErrorDescriptor, 'code'>>> = {
   SHELL_NOT_ALLOWED: { message: 'The requested shell profile is not allowed.', retryable: false },
   SESSION_NAME_REQUIRED: { message: 'A terminal session name is required.', retryable: true },
+  SHELL_PROFILE_REQUIRED: {
+    message: 'A shell profile is required when creating a terminal session.',
+    retryable: true,
+  },
   SESSION_NAME_DUPLICATE: {
     message: 'A terminal session with this name already exists.',
     retryable: true,
@@ -745,7 +749,7 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
   const limits = `Active limits: foreground wait ${String(active.waitTimeoutMs)}ms; background inactivity ${String(active.backgroundTimeoutMs)}ms; absolute runtime ${String(active.maxRuntimeMs)}ms; read wait ${String(active.readWaitMs)}ms; write timeout ${String(active.writeTimeoutMs)}ms; response output ${String(active.outputBytes)} bytes; write input ${String(active.maxWriteBytes)} bytes; ${String(active.maxSessions)} PTY sessions per Agent; ${String(active.maxCommandHistory)} retained commands per session; ${String(active.maxConcurrentJobs)} concurrent Shell jobs per Agent.`;
   const shellExecute = defineTool({
     name: 'shell_execute',
-    description: `Execute a Shell command in single or persistent PTY mode. ${PROFILE_DESCRIPTION} Wait timeouts detach without cancelling the command. ${limits}`,
+    description: `Execute a Shell command in single or persistent PTY mode. In single mode, omit session_name and optionally select shell_profile; in execute mode, pass session_name and omit shell_profile. ${PROFILE_DESCRIPTION} Wait timeouts detach without cancelling the command. ${limits}`,
     parameters: {
       mode: {
         type: 'string',
@@ -922,7 +926,7 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
 
   const shellWrite = defineTool({
     name: 'shell_write',
-    description: `Write raw text or structured control input to a persistent PTY session. ${limits}`,
+    description: `Write raw text or structured control input to a persistent PTY session. Pass exactly one of text or control; control is one of CTRL_C, CTRL_D, ESC, ENTER, TAB, or BACKSPACE. ${limits}`,
     parameters: {
       session_name: { type: 'string', required: true },
       text: { type: 'string' },
@@ -990,7 +994,7 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
 
   const shellRead = defineTool({
     name: 'shell_read',
-    description: `Read PTY session command lists or full/incremental command output. ${limits}`,
+    description: `Read the command list for a specified PTY session or read full/incremental command output. Use shell_session operation list to list sessions. ${limits}`,
     parameters: {
       operation: { type: 'string', enum: ['list', 'command'], required: true },
       session_name: { type: 'string', required: true },
@@ -1125,7 +1129,7 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
 
   const shellSession = defineTool({
     name: 'shell_session',
-    description: `Create, list, delete, or cancel owner-scoped PTY sessions and commands. ${PROFILE_DESCRIPTION} ${limits}`,
+    description: `Create, list, delete, or cancel owner-scoped PTY sessions and commands. create requires session_name and shell_profile; list takes no session target; delete requires session_name; cancel uses either task_id or session_name plus command_id. ${PROFILE_DESCRIPTION} ${limits}`,
     parameters: {
       operation: { type: 'string', enum: ['create', 'list', 'delete', 'cancel'], required: true },
       session_name: { type: 'string' },
@@ -1177,8 +1181,8 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
         };
       }
       if (args.operation === 'create') {
-        if (args.session_name === undefined || args.shell_profile === undefined)
-          throw new Error('SESSION_NAME_REQUIRED');
+        if (args.session_name === undefined) throw new Error('SESSION_NAME_REQUIRED');
+        if (args.shell_profile === undefined) throw new Error('SHELL_PROFILE_REQUIRED');
         if (
           args.command_id !== undefined ||
           args.task_id !== undefined ||

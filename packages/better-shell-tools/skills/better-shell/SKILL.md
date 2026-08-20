@@ -11,7 +11,7 @@ BetterShell provides four DSH tools for Windows shell execution:
 - `shell_session`: create, list, delete, and cancel owner-scoped PTY sessions.
 - `shell_execute`: run a single command or execute inside an existing PTY session.
 - `shell_write`: write text or control input to an existing PTY session.
-- `shell_read`: list sessions, list commands, and read full or incremental output.
+- `shell_read`: list commands for a specified session and read full or incremental command output.
 
 ## Exact Profiles
 
@@ -25,7 +25,7 @@ There are no `default`, `powershell`, `pwsh`, `bash`, `git-bash`, or `wsl` profi
 
 ## Persistent Session Workflow
 
-Create a session first:
+Create a session first. Both `session_name` and `shell_profile` are required for `create`:
 
 ```json
 {
@@ -46,7 +46,7 @@ Then execute through that session. In `execute` mode, pass `session_name` and do
 }
 ```
 
-Use `run_mode: "background"` for a command that should continue after the tool call returns. The result includes a command ID; use `shell_read` or `shell_session` cancellation to inspect or stop it.
+Use `run_mode: "background"` for a command that should continue after the tool call returns. For `single` mode, the result includes a `task_id`; use `shell_session` with `operation: "cancel"` to stop it. For persistent `execute` mode, the result includes `session_name` and `command_id`; use `shell_read` to inspect output or `shell_session` cancellation to stop it.
 
 ## Single Commands
 
@@ -73,7 +73,7 @@ List sessions:
 }
 ```
 
-Write to a session:
+Write to a session. Pass exactly one of `text` or `control`; `control` is one of `CTRL_C`, `CTRL_D`, `ESC`, `ENTER`, `TAB`, or `BACKSPACE`:
 
 ```json
 {
@@ -81,6 +81,8 @@ Write to a session:
   "text": "echo next\r"
 }
 ```
+
+Use `shell_session` with `operation: "list"` to list sessions. Use `shell_session` with `operation: "delete"` and `session_name` to close a session. Use `shell_session` with `operation: "cancel"` either with `task_id` for a single/background job or with both `session_name` and `command_id` for a persistent command.
 
 Read command output:
 

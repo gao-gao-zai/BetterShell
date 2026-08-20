@@ -102,7 +102,7 @@ The optional `allowedCwdRoots` terminal configuration restricts session and sing
 
 - `shell_execute`: run a single process or execute inside an existing PTY session.
 - `shell_write`: write text or control input to a PTY session.
-- `shell_read`: list sessions/commands and read full or incremental output.
+- `shell_read`: list commands for a specified session and read full or incremental output.
 - `shell_session`: create, list, delete, and cancel sessions or commands.
 
 Tool responses use structured error objects and bounded JSON output. Background jobs can inject a completion notice into the owning Agent conversation. The tools package also bundles a `better-shell` DSH skill with the exact profile names, parameter contracts, and persistent-session workflow; it is loaded on demand by the DSH skill loader.
