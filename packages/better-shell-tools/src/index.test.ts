@@ -205,10 +205,30 @@ function fakeShellService(
   };
 }
 
-function definitions(jobs: FakeJobs, betterShell: BetterShellService): readonly ToolDefinition[] {
+interface ApprovalStub {
+  readonly config: { readonly policy: 'ask' | 'never' };
+  readonly request: (request: { readonly toolName: string }) => Promise<string>;
+}
+
+function allowedApproval(): ApprovalStub {
+  return {
+    config: { policy: 'ask' },
+    request: (_request) => {
+      void _request;
+      return Promise.resolve('allowed-once');
+    },
+  };
+}
+
+function definitions(
+  jobs: FakeJobs,
+  betterShell: BetterShellService,
+  approval: ApprovalStub = allowedApproval(),
+): readonly ToolDefinition[] {
   const ctx = {
     jobs,
     betterShell,
+    approval,
     shell: {},
   } as unknown as Context;
   return createToolDefinitions(ctx);
@@ -247,6 +267,27 @@ describe('better-shell tool definitions', () => {
     ]);
   });
 
+  it('requests approval through the DSH service for session creation and command execution', async () => {
+    const request = vi.fn((_request: { readonly toolName: string }) => {
+      void _request;
+      return Promise.resolve('allowed-once');
+    });
+    const items = definitions(new FakeJobs(), fakeShellService(), {
+      config: { policy: 'never' },
+      request,
+    });
+    const owner = agent();
+    await createSession(items, owner);
+    await run(
+      tool(items, 'shell_execute'),
+      { mode: 'execute', command: 'echo hello', session_name: 'main', run_mode: 'background' },
+      owner,
+    );
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request.mock.calls[0]?.[0]).toMatchObject({ toolName: 'shell_session' });
+    expect(request.mock.calls[1]?.[0]).toMatchObject({ toolName: 'shell_execute' });
+  });
   it('starts a PTY command inside the accepted background job', async () => {
     const jobs = new FakeJobs();
     const execute = vi.fn(() => operation());
@@ -378,6 +419,10 @@ describe('better-shell tool definitions', () => {
     const ctx = {
       jobs,
       betterShell,
+      approval: {
+        config: { policy: 'ask' },
+        request: vi.fn(() => Promise.resolve('allowed-once')),
+      },
       shell: {},
       tools,
       effect: vi.fn(),
@@ -418,6 +463,10 @@ describe('better-shell tool definitions', () => {
     const ctx = {
       jobs,
       betterShell: fakeShellService(),
+      approval: {
+        config: { policy: 'ask' },
+        request: vi.fn(() => Promise.resolve('allowed-once')),
+      },
       shell: {},
       tools: { register: vi.fn() },
       effect: vi.fn(),

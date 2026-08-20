@@ -709,30 +709,19 @@ async function authorizeCommand(
   command: string,
   signal: AbortSignal,
   toolName = 'shell_execute',
-  callId?: string,
+  callId?: ToolRunContext['callId'],
 ): Promise<void> {
-  const approval = (
-    ctx as unknown as {
-      approval?: {
-        readonly config: { readonly policy?: string };
-        request(request: {
-          agent: Agent;
-          toolName: string;
-          callId?: string;
-          reason: string;
-          signal: AbortSignal;
-        }): Promise<string>;
-      };
-    }
-  ).approval;
-  if (approval?.config.policy !== 'ask') return;
-  const outcome = await approval.request({
+  const approval = ctx.approval;
+  const request = {
     agent,
     toolName,
-    ...(callId === undefined ? {} : { callId }),
     reason: `${toolName}: ${command.slice(0, 200)}`,
     signal,
-  });
+  };
+  const outcome =
+    callId === undefined
+      ? await approval.request(request)
+      : await approval.request({ ...request, callId });
   if (outcome !== 'allowed-once') throw new Error('APPROVAL_REJECTED');
 }
 
@@ -1323,5 +1312,5 @@ export function apply(ctx: Context): void {
 }
 
 export const name = 'better-shell-tools';
-export const inject = ['betterShell', 'tools', 'shell', 'jobs'] as const;
+export const inject = ['betterShell', 'tools', 'shell', 'jobs', 'approval'] as const;
 export default { name, inject, apply };
