@@ -294,9 +294,12 @@ describe('better-shell tool definitions', () => {
 
   it('reports the missing shell profile separately when creating a session', async () => {
     const items = definitions(new FakeJobs(), fakeShellService());
-    await expect(
-      run(tool(items, 'shell_session'), { operation: 'create', session_name: 'main' }, agent()),
-    ).rejects.toThrow('SHELL_PROFILE_REQUIRED');
+    const result = await run(
+      tool(items, 'shell_session'),
+      { operation: 'create', session_name: 'main' },
+      agent(),
+    );
+    expect(result).toMatchObject({ error: { code: 'SHELL_PROFILE_REQUIRED' } });
   });
   it('requests approval through the DSH service for session creation and command execution', async () => {
     const request = vi.fn((_request: { readonly toolName: string }) => {
