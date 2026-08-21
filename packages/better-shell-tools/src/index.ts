@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import '@deepseek-ai/dsh-jobs';
@@ -49,6 +51,49 @@ const PROFILE_NAMES = Object.keys(DEFAULT_PROFILES).join(', ');
 const PROFILE_DESCRIPTION =
   `Available profiles: ${PROFILE_NAMES}. Use the exact profile name; ` +
   '`pwsh7` is PowerShell 7, `windowsPowerShell` is Windows PowerShell 5.1, and `cmd` is cmd.exe.';
+
+interface SkillRegistrationInput {
+  readonly name: string;
+  readonly description: string;
+  readonly whenToUse?: string;
+  readonly source: string;
+  readonly invocation: { readonly modelInvocable: boolean; readonly userInvocable: boolean };
+  readonly content: string;
+}
+
+interface SkillRegistryLike {
+  register(skill: SkillRegistrationInput): () => void;
+}
+
+interface BetterShellSkill {
+  readonly name: string;
+  readonly description: string;
+  readonly whenToUse: string;
+  readonly content: string;
+}
+
+/** Read and parse the packaged SKILL.md, stripping its YAML frontmatter into fields. */
+function loadBetterShellSkill(): BetterShellSkill | undefined {
+  try {
+    const url = new URL('../skills/better-shell/SKILL.md', import.meta.url);
+    const raw = readFileSync(fileURLToPath(url), 'utf8');
+    const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(raw);
+    const frontmatter = match?.[1];
+    const body = match?.[2];
+    if (frontmatter === undefined || body === undefined) return undefined;
+    const meta: Record<string, string> = {};
+    for (const line of frontmatter.split(/\r?\n/)) {
+      const colon = line.indexOf(':');
+      if (colon > 0) meta[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
+    }
+    const name = meta['name'];
+    const description = meta['description'];
+    if (name === undefined || description === undefined) return undefined;
+    return { name, description, whenToUse: meta['whenToUse'] ?? '', content: body };
+  } catch {
+    return undefined;
+  }
+}
 
 const states = new WeakMap<Agent, OwnerState>();
 const stateCleanupInstalled = new WeakSet<Agent>();
@@ -1366,6 +1411,20 @@ function installBackgroundNotifications(ctx: Context): void {
 export function apply(ctx: Context): void {
   installBackgroundNotifications(ctx);
   for (const definition of createToolDefinitions(ctx)) ctx.tools.register(definition);
+
+  ctx.effect(() => {
+    const skills = ctx.get('skills') as SkillRegistryLike | undefined;
+    const skill = loadBetterShellSkill();
+    if (skills === undefined || skill === undefined) return () => undefined;
+    return skills.register({
+      name: skill.name,
+      description: skill.description,
+      ...(skill.whenToUse !== '' ? { whenToUse: skill.whenToUse } : {}),
+      source: 'bundled',
+      invocation: { modelInvocable: true, userInvocable: true },
+      content: skill.content,
+    });
+  }, 'better-shell skill registration');
 }
 
 export const name = 'better-shell-tools';

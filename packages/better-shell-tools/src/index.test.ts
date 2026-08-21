@@ -280,6 +280,40 @@ describe('better-shell tool definitions', () => {
     ]);
   });
 
+  it('registers the better-shell skill through ctx.skills', () => {
+    const register = vi.fn();
+    const skills = { register };
+    const ctx = {
+      jobs: new FakeJobs(),
+      betterShell: fakeShellService(),
+      approval: {
+        config: { policy: 'ask' },
+        request: vi.fn(() => Promise.resolve('allowed-once')),
+      },
+      shell: {},
+      tools: { register: vi.fn() },
+      effect: vi.fn((callback: () => void) => {
+        callback();
+        return () => undefined;
+      }),
+      get: vi.fn((name: string) => (name === 'skills' ? skills : undefined)),
+    } as unknown as Context;
+    apply(ctx);
+    expect(register).toHaveBeenCalledOnce();
+    const skill = register.mock.calls[0]?.[0] as {
+      name?: string;
+      source?: string;
+      invocation?: { modelInvocable?: boolean; userInvocable?: boolean };
+      content?: string;
+    };
+    expect(skill).toMatchObject({
+      name: 'better-shell',
+      source: 'bundled',
+      invocation: { modelInvocable: true, userInvocable: true },
+    });
+    expect(skill.content).toContain('# BetterShell');
+  });
+
   it('documents the exact shell profiles in tool schemas', () => {
     const items = definitions(new FakeJobs(), fakeShellService());
     const execute = tool(items, 'shell_execute');
