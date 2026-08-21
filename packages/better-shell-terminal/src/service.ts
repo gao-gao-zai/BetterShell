@@ -177,12 +177,6 @@ function commandLine(
     const markerSecond = marker.slice(markerSplit);
     return `set "__dsh_a=${first}"\rset "__dsh_b=${second}"\rset "__dsh_c=${markerFirst}"\rset "__dsh_d=${markerSecond}"\recho %__dsh_a%%__dsh_b%\r${command}\rif errorlevel 1 echo %__dsh_c%%__dsh_d%1__\rif not errorlevel 1 echo %__dsh_c%%__dsh_d%0__\rset "__dsh_a="\rset "__dsh_b="\rset "__dsh_c="\rset "__dsh_d="`;
   }
-  if (kind === 'bash') {
-    const encodedCommand = Buffer.from(command, 'utf8').toString('base64');
-    const script = `__dsh_b=$(printf '%s' '${encodedCommand}' | base64 -d); printf '%s\\n' '${startMarker}'; eval "$__dsh_b"; __dsh_c=$?; printf '%s%s__\\n' '${marker}' "$__dsh_c"`;
-    const encodedScript = Buffer.from(script, 'utf8').toString('base64');
-    return `__dsh_x=$(printf '%s' '${encodedScript}' | base64 -d); eval "$__dsh_x"`;
-  }
   throw new Error('raw profiles do not support wrapped command execution');
 }
 
