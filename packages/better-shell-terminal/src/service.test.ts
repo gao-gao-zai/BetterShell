@@ -167,6 +167,41 @@ describe('LocalBetterShellService', () => {
     await service.closeOwner(agent);
   });
 
+  it('interrupts a command on normal cancel and keeps the session alive', async () => {
+    const pty = new FakePty();
+    const service = new LocalBetterShellService(
+      {
+        profiles: { test: profile },
+        defaultRows: 30,
+        defaultCols: 120,
+        maxOutputBytes: 1024,
+        maxCommandOutputBytes: 1024,
+        writeTimeoutMs: 1000,
+      },
+      () => pty,
+    );
+    const agent = fakeAgent();
+    const session = await service.create(agent, { name: 'soft', profile: 'test' });
+    const operation = service.execute(agent, session.id, 'Start-Sleep 60');
+    const encodedScript = /FromBase64String\('([^']+)'\)/.exec(pty.writes[0] ?? '')?.[1];
+    if (encodedScript === undefined) throw new Error('encoded script missing');
+    const script = Buffer.from(encodedScript, 'base64').toString('utf8');
+    expect(script).toContain('finally');
+    const startMarker = /(__DSH_START_[a-f0-9]+_)/.exec(script)?.[1];
+    const marker = /(__DSH_DONE_[a-f0-9]+_)/.exec(script)?.[1];
+    if (startMarker === undefined || marker === undefined) throw new Error('markers missing');
+    pty.emit(startMarker);
+
+    const cancelPromise = service.cancelCommand(agent, session.id, operation.id, false);
+    expect(pty.writes.at(-1)).toBe('\u0003');
+    pty.emit(marker + '130__');
+    const result = await cancelPromise;
+    expect(result.status).toBe('cancelled');
+    expect(result.exitCode).toBe(130);
+    expect(service.list(agent)[0]?.status).toBe('running');
+    await service.closeOwner(agent);
+  });
+
   it('waits for output changes without mutating command state', async () => {
     const pty = new FakePty();
     const service = new LocalBetterShellService(

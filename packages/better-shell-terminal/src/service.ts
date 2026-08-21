@@ -82,6 +82,10 @@ const CONTROL_BYTES: Readonly<Record<NonNullable<WriteRequest['control']>, strin
   BACKSPACE: '\u0008',
 };
 
+// Sentinel exit code the PowerShell wrapper reports when Ctrl+C interrupts a
+// running command. 130 is the conventional SIGINT exit code.
+const INTERRUPT_EXIT_CODE = 130;
+
 const DEFAULT_CONFIG: TerminalConfig = {
   profiles: DEFAULT_PROFILES,
   defaultProfile: 'pwsh7',
@@ -160,7 +164,7 @@ function commandLine(
 ): string {
   if (kind === 'powershell') {
     const encodedCommand = Buffer.from(command, 'utf8').toString('base64');
-    const script = `[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write('${startMarker}'); $__dsh_b=[Convert]::FromBase64String('${encodedCommand}'); $__dsh_c=0; try { . ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString($__dsh_b))); $__dsh_c=if($LASTEXITCODE -is [int]){$LASTEXITCODE}elseif($?){0}else{1} } catch { $__dsh_c=1; Write-Error $_ }; [Console]::WriteLine(('{0}{1}__' -f '${marker}',$__dsh_c))`;
+    const script = `[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write('${startMarker}'); $__dsh_b=[Convert]::FromBase64String('${encodedCommand}'); $__dsh_c=${String(INTERRUPT_EXIT_CODE)}; try { . ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString($__dsh_b))); $__dsh_c=if($LASTEXITCODE -is [int]){$LASTEXITCODE}elseif($?){0}else{1} } catch { $__dsh_c=1; Write-Error $_ } finally { [Console]::WriteLine(('{0}{1}__' -f '${marker}',$__dsh_c)) }`;
     const encodedScript = Buffer.from(script, 'utf8').toString('base64');
     return `$__dsh_x=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedScript}')); . ([ScriptBlock]::Create($__dsh_x))`;
   }
@@ -172,6 +176,12 @@ function commandLine(
     const markerFirst = marker.slice(0, markerSplit);
     const markerSecond = marker.slice(markerSplit);
     return `set "__dsh_a=${first}"\rset "__dsh_b=${second}"\rset "__dsh_c=${markerFirst}"\rset "__dsh_d=${markerSecond}"\recho %__dsh_a%%__dsh_b%\r${command}\rif errorlevel 1 echo %__dsh_c%%__dsh_d%1__\rif not errorlevel 1 echo %__dsh_c%%__dsh_d%0__\rset "__dsh_a="\rset "__dsh_b="\rset "__dsh_c="\rset "__dsh_d="`;
+  }
+  if (kind === 'bash') {
+    const encodedCommand = Buffer.from(command, 'utf8').toString('base64');
+    const script = `__dsh_b=$(printf '%s' '${encodedCommand}' | base64 -d); printf '%s\\n' '${startMarker}'; eval "$__dsh_b"; __dsh_c=$?; printf '%s%s__\\n' '${marker}' "$__dsh_c"`;
+    const encodedScript = Buffer.from(script, 'utf8').toString('base64');
+    return `__dsh_x=$(printf '%s' '${encodedScript}' | base64 -d); eval "$__dsh_x"`;
   }
   throw new Error('raw profiles do not support wrapped command execution');
 }
@@ -529,6 +539,12 @@ export class LocalBetterShellService implements BetterShellService {
           }
         } else {
           session.process.write('\u0003');
+          await Promise.race([
+            command.done,
+            new Promise<void>((resolve) => {
+              setTimeout(resolve, 2_000);
+            }),
+          ]);
         }
       } catch (error) {
         if (session.status !== 'running') throw new Error('SESSION_CLOSED');
@@ -735,7 +751,12 @@ export class LocalBetterShellService implements BetterShellService {
     command.output.append(session.markerBuffer.slice(0, markerIndex));
     session.markerBuffer = markerTail.slice(completion[0].length);
     const code = Number.parseInt(completion[1] ?? '1', 10);
-    this.finishCommand(session, command, code === 0 ? 'completed' : 'failed', code);
+    this.finishCommand(
+      session,
+      command,
+      code === 0 ? 'completed' : code === INTERRUPT_EXIT_CODE ? 'cancelled' : 'failed',
+      code,
+    );
     session.markerBuffer = '';
     this.notifyChange(session);
   }
