@@ -90,6 +90,60 @@ describe('LocalBetterShellService', () => {
     expect(service.list(agent)).toHaveLength(0);
   });
 
+  it('normalizes newlines in written text to carriage returns', async () => {
+    const pty = new FakePty();
+    const service = new LocalBetterShellService(
+      {
+        profiles: { test: profile },
+        defaultRows: 30,
+        defaultCols: 120,
+        maxOutputBytes: 1024,
+        maxCommandOutputBytes: 1024,
+        writeTimeoutMs: 1000,
+      },
+      () => pty,
+    );
+    const agent = fakeAgent();
+    const session = await service.create(agent, { name: 'nl', profile: 'test' });
+    await service.write(agent, session.id, {
+      text: 'Write-Output one\nWrite-Output two\r\nWrite-Output three',
+    });
+    expect(pty.writes[0]).toBe('Write-Output one\rWrite-Output two\rWrite-Output three');
+    await service.closeOwner(agent);
+  });
+
+  it('strips ANSI escape sequences from command output', async () => {
+    const pty = new FakePty();
+    const service = new LocalBetterShellService(
+      {
+        profiles: { test: profile },
+        defaultRows: 30,
+        defaultCols: 120,
+        maxOutputBytes: 1024,
+        maxCommandOutputBytes: 1024,
+        writeTimeoutMs: 1000,
+      },
+      () => pty,
+    );
+    const agent = fakeAgent();
+    const session = await service.create(agent, { name: 'ansi', profile: 'test' });
+    const operation = service.execute(agent, session.id, 'Write-Output hello');
+    const encodedScript = /FromBase64String\('([^']+)'\)/.exec(pty.writes[0] ?? '')?.[1];
+    if (encodedScript === undefined) throw new Error('encoded script missing');
+    const script = Buffer.from(encodedScript, 'base64').toString('utf8');
+    const startMarker = /(__DSH_START_[a-f0-9]+_)/.exec(script)?.[1];
+    const marker = /(__DSH_DONE_[a-f0-9]+_)/.exec(script)?.[1];
+    if (startMarker === undefined || marker === undefined) throw new Error('markers missing');
+    pty.emit(
+      '\u001b[2J\u001b[1;21H' + startMarker + '\u001b[32;1mhello\u001b[0m\r\n' + marker + '0__',
+    );
+    await expect(operation.done).resolves.toMatchObject({
+      status: 'completed',
+      output: 'hello\r\n',
+    });
+    await service.closeOwner(agent);
+  });
+
   it('force-cancels a command and closes the PTY after confirmation timeout', async () => {
     const pty = new FakePty();
     const service = new LocalBetterShellService(

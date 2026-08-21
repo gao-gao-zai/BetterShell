@@ -642,4 +642,71 @@ describe('better-shell tool definitions', () => {
     );
     expect(rejected).toMatchObject({ error: { code: 'INVALID_CURSOR' } });
   });
+
+  it('falls back to the most recent command when command_id is omitted', async () => {
+    const items = definitions(new FakeJobs(), fakeShellService());
+    const owner = agent();
+    await createSession(items, owner);
+
+    const read = await run(
+      tool(items, 'shell_read'),
+      { operation: 'command', session_name: 'main' },
+      owner,
+    );
+    expect(read).toMatchObject({ command_id: 'C2', output: 'hello' });
+  });
+
+  it('returns only the output produced since the previous write', async () => {
+    const service = fakeShellService();
+    const items = definitions(new FakeJobs(), service);
+    const owner = agent();
+    await createSession(items, owner);
+
+    const first = await run(
+      tool(items, 'shell_write'),
+      { session_name: 'main', text: 'echo one' },
+      owner,
+    );
+    expect(first).toMatchObject({ output: 'hello', status: 'written' });
+
+    const second = await run(
+      tool(items, 'shell_write'),
+      { session_name: 'main', text: 'echo two' },
+      owner,
+    );
+    expect(second).toMatchObject({ output: '', status: 'written' });
+  });
+
+  it('advances the output cursor even when include_output is false', async () => {
+    const service = fakeShellService();
+    const items = definitions(new FakeJobs(), service);
+    const owner = agent();
+    await createSession(items, owner);
+
+    const hidden = await run(
+      tool(items, 'shell_write'),
+      { session_name: 'main', text: 'echo hidden', include_output: false },
+      owner,
+    );
+    expect(hidden).not.toHaveProperty('output');
+
+    const shown = await run(
+      tool(items, 'shell_write'),
+      { session_name: 'main', text: 'echo shown' },
+      owner,
+    );
+    expect(shown).toMatchObject({ output: '', status: 'written' });
+  });
+
+  it('rejects shell_profile in execute mode with a clear error', async () => {
+    const items = definitions(new FakeJobs(), fakeShellService());
+    const owner = agent();
+
+    const result = await run(
+      tool(items, 'shell_execute'),
+      { mode: 'execute', command: 'echo hi', session_name: 'main', shell_profile: 'cmd' },
+      owner,
+    );
+    expect(result).toMatchObject({ error: { code: 'SESSION_PROFILE_NOT_ALLOWED' } });
+  });
 });

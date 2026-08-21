@@ -16,6 +16,7 @@ import {
   type CommandId,
   type CommandOperation,
   type CommandSnapshot,
+  type ReadResult,
   type SessionId,
   type SessionSnapshot,
   type SingleProcess,
@@ -40,6 +41,7 @@ interface ReadCursorState {
 interface OwnerState {
   readonly sessions: Map<string, SessionId>;
   readonly cursors: Map<string, ReadCursorState>;
+  readonly sessionOutputCursors: Map<string, number>;
   nextCursorNumber: number;
 }
 
@@ -123,7 +125,12 @@ function requireOwner(exec: ToolRunContext): Agent {
 function stateFor(agent: Agent): OwnerState {
   let state = states.get(agent);
   if (state === undefined) {
-    state = { sessions: new Map(), cursors: new Map(), nextCursorNumber: 1 };
+    state = {
+      sessions: new Map(),
+      cursors: new Map(),
+      sessionOutputCursors: new Map(),
+      nextCursorNumber: 1,
+    };
     states.set(agent, state);
   }
   if (!stateCleanupInstalled.has(agent)) {
@@ -141,6 +148,7 @@ function stateFor(agent: Agent): OwnerState {
         () => () => {
           ownerState.sessions.clear();
           ownerState.cursors.clear();
+          ownerState.sessionOutputCursors.clear();
           backgroundJobs.delete(agent);
           shellAdmissions.delete(agent);
         },
@@ -282,6 +290,11 @@ const ERROR_MESSAGES: Readonly<Record<string, Omit<ShellErrorDescriptor, 'code'>
   },
   SHELL_ARGUMENTS_NOT_ALLOWED: {
     message: 'The supplied arguments are not allowed for this Shell operation.',
+    retryable: true,
+  },
+  SESSION_PROFILE_NOT_ALLOWED: {
+    message:
+      'execute mode must not pass shell_profile; the session already has a profile. Use single mode with shell_profile, or omit shell_profile.',
     retryable: true,
   },
   PERMISSION_DENIED: { message: 'The Shell operation is not permitted.', retryable: false },
@@ -792,12 +805,11 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
       const mode = args.mode ?? 'single';
       const runMode = args.run_mode ?? 'wait';
       if (mode === 'single' && args.session_name !== undefined)
-        throw new Error('SESSION_ARGUMENT_INVALID');
-      if (
-        mode === 'execute' &&
-        (args.session_name === undefined || args.shell_profile !== undefined)
-      )
-        throw new Error('SESSION_ARGUMENT_INVALID');
+        throw new Error('SESSION_ARGUMENT_INVALID: single mode must not pass session_name');
+      if (mode === 'execute' && args.session_name === undefined)
+        throw new Error('SESSION_ARGUMENT_INVALID: execute mode requires session_name');
+      if (mode === 'execute' && args.shell_profile !== undefined)
+        throw new Error('SESSION_PROFILE_NOT_ALLOWED');
       const settings = ctx.betterShell.settings();
       await authorizeCommand(ctx, agent, args.command, exec.signal, 'shell_execute', exec.callId);
       const maxRuntime = boundedLimit(
@@ -973,20 +985,31 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
         request = { control, timeoutMs: writeTimeout };
       }
       const written = await ctx.betterShell.write(agent, id, request);
-      const read =
-        args.include_output === false
-          ? undefined
-          : ctx.betterShell.read(agent, id, { maxBytes: maxOutput });
+      const state = stateFor(agent);
+      const priorCursor = state.sessionOutputCursors.get(args.session_name);
+      let read: ReadResult;
+      try {
+        read = ctx.betterShell.read(agent, id, {
+          ...(priorCursor === undefined ? {} : { cursor: priorCursor }),
+          maxBytes: maxOutput,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (priorCursor === undefined || !message.includes('INVALID_CURSOR')) throw error;
+        read = ctx.betterShell.read(agent, id, { maxBytes: maxOutput });
+      }
+      state.sessionOutputCursors.set(args.session_name, read.cursor);
+      const includeOutput = args.include_output !== false;
       return {
         session_name: args.session_name,
         status: 'written',
         bytes_written: written.bytesWritten,
-        returned_bytes: read === undefined ? 0 : Buffer.byteLength(read.text, 'utf8'),
-        output_length: read?.totalBytes ?? 0,
-        more: read?.truncated ?? false,
+        returned_bytes: includeOutput ? Buffer.byteLength(read.text, 'utf8') : 0,
+        output_length: read.totalBytes,
+        more: includeOutput ? read.truncated : false,
         timer_reset: written.session.activeCommandId !== undefined,
         session_status: written.session.activeCommandId === undefined ? 'idle' : 'busy',
-        ...(read === undefined ? {} : { output: read.text, truncated: read.truncated }),
+        ...(includeOutput ? { output: read.text, truncated: read.truncated } : {}),
       };
     },
   });
@@ -1050,7 +1073,6 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
           truncated: bounded.truncated || next < commands.length,
         };
       }
-      if (args.command_id === undefined) throw new Error('COMMAND_NOT_FOUND');
       if (args.limit !== undefined || args.list_cursor !== undefined) {
         throw new Error('READ_ARGUMENT_INVALID');
       }
@@ -1058,7 +1080,12 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
       if (readMode === 'full' && (args.cursor !== undefined || args.offset !== undefined)) {
         throw new Error('INVALID_CURSOR');
       }
-      const commandId = args.command_id as CommandId;
+      let commandId = args.command_id as CommandId | undefined;
+      if (commandId === undefined) {
+        const commands = ctx.betterShell.listCommands(agent, id);
+        commandId = commands[commands.length - 1]?.id;
+      }
+      if (commandId === undefined) throw new Error('COMMAND_NOT_FOUND');
       const cursor =
         readMode === 'incremental'
           ? parseReadCursor(agent, id, commandId, args.cursor, args.offset)
@@ -1109,7 +1136,7 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
       return {
         operation: 'command',
         session_name: args.session_name,
-        command_id: args.command_id,
+        command_id: commandId,
         status: read.command?.status ?? 'failed',
         read_mode: readMode,
         wait_expired: waitExpired,

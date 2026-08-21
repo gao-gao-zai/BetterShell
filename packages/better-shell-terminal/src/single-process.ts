@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BoundedText, readCursor } from './buffer.js';
 import { ShellOutputDecoder } from './encoding.js';
+import { stripAnsi } from './ansi.js';
 import { startProcessGuardian } from './job-object.js';
 import type { ShellProfile, SingleProcess } from './types.js';
 
@@ -79,7 +80,7 @@ export async function startSingleProcess(request: SingleSpawnRequest): Promise<S
   const decoder = new ShellOutputDecoder(request.profile.encoding ?? 'utf-8');
   const append = (chunk: Buffer | string): void => {
     lastActivityAt = Date.now();
-    output.append(decoder.decode(typeof chunk === 'string' ? chunk : chunk));
+    output.append(stripAnsi(decoder.decode(typeof chunk === 'string' ? chunk : chunk)));
   };
   child.stdout.on('data', append);
   child.stderr.on('data', append);

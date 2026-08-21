@@ -86,9 +86,11 @@ Write to a session. Pass exactly one of `text` or `control`; `control` is one of
 }
 ```
 
+Newlines in `text` are normalized to carriage returns (Enter), so `\n`, `\r\n`, and `\r` all submit a line in PowerShell and cmd. `include_output` defaults to `true` and returns only the output produced since the previous write (not the accumulated session buffer); set `include_output: false` to suppress it entirely.
+
 For persistent commands, a normal cancel sends `CTRL_C` and keeps the PTY alive when the shell acknowledges it. A forced cancel sends `CTRL_C`, waits briefly for confirmation, and closes the PTY only if the command remains running; after that fallback the session must be recreated.
 
-Read command output:
+Read command output. `command_id` may be omitted to read the most recent command in the session:
 
 ```json
 {
@@ -99,7 +101,7 @@ Read command output:
 }
 ```
 
-Command output is the PTY text produced between the internal start and completion markers. BetterShell filters its own wrapper script, prompt redraw, and internal markers from command output; ANSI sequences explicitly emitted by the shell command may remain.
+Command output is the PTY text produced between the internal start and completion markers. BetterShell filters its own wrapper script, prompt redraw, and internal markers from command output, and strips ANSI color and cursor-control escape sequences so the returned text is clean for machine parsing.
 
 Use the returned `next_cursor` for the next incremental read. Do not invent alternate field names such as `profile`, `shell`, `action`, `name`, or `command_text`.
 

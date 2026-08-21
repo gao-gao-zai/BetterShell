@@ -5,6 +5,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent';
 import { DEFAULT_SETTINGS, type BetterShellSettings } from './config.js';
 import { BoundedText, readCursor } from './buffer.js';
 import { ShellOutputDecoder } from './encoding.js';
+import { stripAnsi } from './ansi.js';
 import { DEFAULT_PROFILES, resolveProfile, resolveSingleProfile } from './profiles.js';
 import { nodePtyFactory } from './node-pty-factory.js';
 import { startSingleProcess } from './single-process.js';
@@ -399,7 +400,7 @@ export class LocalBetterShellService implements BetterShellService {
     if (session.status !== 'running') throw new Error('session is not running');
     let text: string;
     if (request.text !== undefined) {
-      text = request.text;
+      text = request.text.replace(/\r\n/g, '\r').replace(/\n/g, '\r');
     } else {
       const control = request.control;
       if (control === undefined) throw new Error('exactly one of text or control is required');
@@ -683,14 +684,15 @@ export class LocalBetterShellService implements BetterShellService {
     const decoded = session.decoder.decode(data);
     if (decoded.length === 0) return;
     session.lastActivityAt = Date.now();
-    session.output.append(decoded);
+    const clean = stripAnsi(decoded);
+    session.output.append(clean);
     const command = session.active;
     if (command === undefined) {
       this.notifyChange(session);
       return;
     }
     command.lastActivityAt = session.lastActivityAt;
-    session.markerBuffer += decoded;
+    session.markerBuffer += clean;
 
     if (!command.started) {
       const startIndex = session.markerBuffer.indexOf(command.startMarker);
