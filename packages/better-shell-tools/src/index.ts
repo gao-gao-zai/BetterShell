@@ -937,7 +937,7 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
 
   const shellWrite = defineTool({
     name: 'shell_write',
-    description: `Write raw text or structured control input to a persistent PTY session. Pass exactly one of text or control; control is one of CTRL_C, CTRL_D, ESC, ENTER, TAB, or BACKSPACE. ${limits}`,
+    description: `Write raw text or structured control input to a persistent PTY session; this is intended for interactive CLI programs (answering prompts, sending control keys, feeding input to a running command). Pass exactly one of text or control; control is one of CTRL_C, CTRL_D, ESC, ENTER, TAB, or BACKSPACE. Text newlines are normalized to carriage returns (Enter), so it can also submit commands, but commands run via shell_write are not recorded in shell_read and only return session echo — prefer shell_execute (execute mode) for running commands whose clean, recordable, incremental output you need. ${limits}`,
     parameters: {
       session_name: { type: 'string', required: true },
       text: { type: 'string' },

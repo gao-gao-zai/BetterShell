@@ -10,7 +10,7 @@ BetterShell provides four DSH tools for Windows shell execution:
 
 - `shell_session`: create, list, delete, and cancel owner-scoped PTY sessions.
 - `shell_execute`: run a single command or execute inside an existing PTY session.
-- `shell_write`: write text or control input to an existing PTY session.
+- `shell_write`: write text or control input to an existing PTY session, intended for interactive CLI programs (answering prompts, sending control keys, feeding input to a running command).
 - `shell_read`: list commands for a specified session and read full or incremental command output.
 
 ## Exact Profiles
@@ -77,7 +77,7 @@ List sessions:
 }
 ```
 
-Write to a session. Pass exactly one of `text` or `control`; `control` is one of `CTRL_C`, `CTRL_D`, `ESC`, `ENTER`, `TAB`, or `BACKSPACE`:
+Write to a session, primarily for interactive CLI programs (answering prompts, sending control keys, feeding input to a running command). Pass exactly one of `text` or `control`; `control` is one of `CTRL_C`, `CTRL_D`, `ESC`, `ENTER`, `TAB`, or `BACKSPACE`:
 
 ```json
 {
@@ -86,7 +86,7 @@ Write to a session. Pass exactly one of `text` or `control`; `control` is one of
 }
 ```
 
-Newlines in `text` are normalized to carriage returns (Enter), so `\n`, `\r\n`, and `\r` all submit a line in PowerShell and cmd. `include_output` defaults to `true` and returns only the output produced since the previous write (not the accumulated session buffer); set `include_output: false` to suppress it entirely.
+Newlines in `text` are normalized to carriage returns (Enter), so `\n`, `\r\n`, and `\r` all submit a line in PowerShell and cmd. `include_output` defaults to `true` and returns only the output produced since the previous write (not the accumulated session buffer); set `include_output: false` to suppress it entirely. Writing text can submit commands, but commands run via `shell_write` are not recorded in `shell_read` and only return session echo; prefer `shell_execute` (execute mode) for commands whose clean, recordable, incremental output you need.
 
 For persistent commands, a normal cancel sends `CTRL_C` and keeps the PTY alive when the shell acknowledges it. A forced cancel sends `CTRL_C`, waits briefly for confirmation, and closes the PTY only if the command remains running; after that fallback the session must be recreated.
 
