@@ -4,6 +4,7 @@ import { isAbsolute, relative, resolve } from 'node:path';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { DEFAULT_SETTINGS, type BetterShellSettings } from './config.js';
 import { BoundedText, readCursor } from './buffer.js';
+import { ShellOutputDecoder } from './encoding.js';
 import { DEFAULT_PROFILES, resolveProfile, resolveSingleProfile } from './profiles.js';
 import { nodePtyFactory } from './node-pty-factory.js';
 import { startSingleProcess } from './single-process.js';
@@ -65,6 +66,7 @@ interface SessionRecord {
   disposeData: () => void;
   disposeExit: () => void;
   markerBuffer: string;
+  readonly decoder: ShellOutputDecoder;
   nextCommandNumber: number;
   writeChain: Promise<void>;
   readonly changeWaiters: Set<() => void>;
@@ -157,7 +159,7 @@ function commandLine(
 ): string {
   if (kind === 'powershell') {
     const encodedCommand = Buffer.from(command, 'utf8').toString('base64');
-    const script = `[Console]::Write('${startMarker}'); $__dsh_b=[Convert]::FromBase64String('${encodedCommand}'); $__dsh_c=0; try { . ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString($__dsh_b))); $__dsh_c=if($LASTEXITCODE -is [int]){$LASTEXITCODE}elseif($?){0}else{1} } catch { $__dsh_c=1; Write-Error $_ }; [Console]::WriteLine(('{0}{1}__' -f '${marker}',$__dsh_c))`;
+    const script = `[Console]::OutputEncoding=[Text.Encoding]::UTF8; [Console]::Write('${startMarker}'); $__dsh_b=[Convert]::FromBase64String('${encodedCommand}'); $__dsh_c=0; try { . ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString($__dsh_b))); $__dsh_c=if($LASTEXITCODE -is [int]){$LASTEXITCODE}elseif($?){0}else{1} } catch { $__dsh_c=1; Write-Error $_ }; [Console]::WriteLine(('{0}{1}__' -f '${marker}',$__dsh_c))`;
     const encodedScript = Buffer.from(script, 'utf8').toString('base64');
     return `$__dsh_x=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedScript}')); . ([ScriptBlock]::Create($__dsh_x))`;
   }
@@ -317,6 +319,7 @@ export class LocalBetterShellService implements BetterShellService {
           // Listener is assigned immediately after construction.
         },
         markerBuffer: '',
+        decoder: new ShellOutputDecoder(profile.encoding ?? 'utf-8'),
         nextCommandNumber: 1,
         writeChain: Promise.resolve(),
         changeWaiters: new Set(),
@@ -676,16 +679,18 @@ export class LocalBetterShellService implements BetterShellService {
     }
   }
 
-  private onData(session: SessionRecord, data: string): void {
+  private onData(session: SessionRecord, data: string | Uint8Array): void {
+    const decoded = session.decoder.decode(data);
+    if (decoded.length === 0) return;
     session.lastActivityAt = Date.now();
-    session.output.append(data);
+    session.output.append(decoded);
     const command = session.active;
     if (command === undefined) {
       this.notifyChange(session);
       return;
     }
     command.lastActivityAt = session.lastActivityAt;
-    session.markerBuffer += data;
+    session.markerBuffer += decoded;
 
     if (!command.started) {
       const startIndex = session.markerBuffer.indexOf(command.startMarker);

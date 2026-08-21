@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { BoundedText, readCursor } from './buffer.js';
+import { ShellOutputDecoder } from './encoding.js';
 import { startProcessGuardian } from './job-object.js';
 import type { ShellProfile, SingleProcess } from './types.js';
 
@@ -30,7 +31,7 @@ function childEnvironment(
 function gatedCommand(profile: ShellProfile, command: string, gate: string): string {
   const quoted = gate.replaceAll("'", "''");
   if (profile.kind === 'powershell') {
-    return `while (-not (Test-Path -LiteralPath '${quoted}')) { Start-Sleep -Milliseconds 10 }; ${command}`;
+    return `[Console]::OutputEncoding=[Text.Encoding]::UTF8; while (-not (Test-Path -LiteralPath '${quoted}')) { Start-Sleep -Milliseconds 10 }; ${command}`;
   }
   if (profile.kind === 'cmd') {
     const waitScript = `while (-not (Test-Path -LiteralPath '${quoted}')) { Start-Sleep -Milliseconds 10 }`;
@@ -75,9 +76,10 @@ export async function startSingleProcess(request: SingleSpawnRequest): Promise<S
   const startedAt = Date.now();
   let lastActivityAt = startedAt;
   let killed = false;
+  const decoder = new ShellOutputDecoder(request.profile.encoding ?? 'utf-8');
   const append = (chunk: Buffer | string): void => {
     lastActivityAt = Date.now();
-    output.append(typeof chunk === 'string' ? chunk : chunk.toString('utf8'));
+    output.append(decoder.decode(typeof chunk === 'string' ? chunk : chunk));
   };
   child.stdout.on('data', append);
   child.stderr.on('data', append);

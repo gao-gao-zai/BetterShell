@@ -13,7 +13,7 @@ BetterShell provides two plugins:
 - Windows PowerShell 7, Windows PowerShell 5.1, and `cmd.exe` profiles.
 - Agent-identity isolation for sessions, commands, cursors, and jobs.
 - Foreground, background, timeout, cancellation, and completion notifications.
-- UTF-8-safe bounded output with incremental cursors.
+- Encoding-safe bounded output with incremental cursors: PowerShell profiles force UTF-8, while `cmd` follows the system code page (GB18030 on Chinese Windows).
 - Windows Job Object process-tree cleanup with fallback termination.
 - Official DSH settings integration with live resource limits.
 - Optional user approval integration for shell commands.

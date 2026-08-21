@@ -118,7 +118,7 @@ export interface ReadResult {
 export interface PtyProcess {
   readonly pid: number;
   readonly supportsJobObject?: true;
-  readonly onData: (listener: (data: string) => void) => () => void;
+  readonly onData: (listener: (data: string | Uint8Array) => void) => () => void;
   readonly onExit: (listener: (event: { exitCode: number; signal?: number }) => void) => () => void;
   write(data: string): void;
   resize(cols: number, rows: number): void;

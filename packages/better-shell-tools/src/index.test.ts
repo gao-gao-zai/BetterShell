@@ -368,6 +368,34 @@ describe('better-shell tool definitions', () => {
     });
   });
 
+  it('reports session status when force-cancelling a persistent command', async () => {
+    const service = fakeShellService();
+    const items = definitions(new FakeJobs(), service);
+    const owner = agent();
+    await createSession(items, owner);
+
+    const result = await run(
+      tool(items, 'shell_session'),
+      { operation: 'cancel', session_name: 'main', command_id: '001', force: true },
+      owner,
+    );
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Vitest inspects the mock; it is not invoked detached.
+    expect(vi.mocked(service.cancelCommand)).toHaveBeenCalledWith(
+      owner,
+      SESSION_ID,
+      COMMAND_ID,
+      true,
+    );
+    expect(result).toMatchObject({
+      operation: 'cancel',
+      status: 'terminated',
+      force_used: true,
+      session_status: 'running',
+      session_closed: false,
+    });
+  });
+
   it('does not start a PTY command when jobs preflight rejects registration', async () => {
     const jobs = new FakeJobs();
     const execute = vi.fn(() => operation());

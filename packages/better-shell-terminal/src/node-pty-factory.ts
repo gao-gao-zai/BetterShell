@@ -44,6 +44,7 @@ export const nodePtyFactory: PtyFactory = ({ profile, cwd, env, rows, cols }: Pt
     env: childEnv,
     rows,
     cols,
+    encoding: null,
     ...(cwd === undefined ? {} : { cwd }),
   };
   return wrapPty(spawn(profile.executable, [...profile.args], options));

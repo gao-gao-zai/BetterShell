@@ -749,7 +749,7 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
   const limits = `Active limits: foreground wait ${String(active.waitTimeoutMs)}ms; background inactivity ${String(active.backgroundTimeoutMs)}ms; absolute runtime ${String(active.maxRuntimeMs)}ms; read wait ${String(active.readWaitMs)}ms; write timeout ${String(active.writeTimeoutMs)}ms; response output ${String(active.outputBytes)} bytes; write input ${String(active.maxWriteBytes)} bytes; ${String(active.maxSessions)} PTY sessions per Agent; ${String(active.maxCommandHistory)} retained commands per session; ${String(active.maxConcurrentJobs)} concurrent Shell jobs per Agent.`;
   const shellExecute = defineTool({
     name: 'shell_execute',
-    description: `Execute a Shell command in single or persistent PTY mode. In single mode, omit session_name and optionally select shell_profile; in execute mode, pass session_name and omit shell_profile. ${PROFILE_DESCRIPTION} Wait timeouts detach without cancelling the command. ${limits}`,
+    description: `Execute a Shell command in single or persistent PTY mode. In both modes, run_mode may be wait or background; wait_timeout_ms applies to foreground waiting and detaches without cancelling when it expires. In single mode, omit session_name and optionally select shell_profile; in execute mode, pass session_name and omit shell_profile. ${PROFILE_DESCRIPTION} ${limits}`,
     parameters: {
       mode: {
         type: 'string',
@@ -1255,18 +1255,22 @@ export function createToolDefinitions(ctx: Context): readonly ToolDefinition[] {
       }
       if (args.session_name === undefined || args.command_id === undefined)
         throw new Error('COMMAND_NOT_FOUND');
+      const sessionIdValue = sessionId(agent, args.session_name);
       const result = await ctx.betterShell.cancelCommand(
         agent,
-        sessionId(agent, args.session_name),
+        sessionIdValue,
         args.command_id as CommandId,
         args.force === true,
       );
+      const session = ctx.betterShell.list(agent).find((entry) => entry.id === sessionIdValue);
       return {
         operation: 'cancel',
         target: { session_name: args.session_name, command_id: args.command_id },
         status:
           result.status === 'killed' || result.status === 'cancelled' ? 'terminated' : 'cancelling',
         force_used: args.force === true,
+        session_status: session?.status ?? 'closed',
+        session_closed: session?.status !== 'running',
       };
     },
   });

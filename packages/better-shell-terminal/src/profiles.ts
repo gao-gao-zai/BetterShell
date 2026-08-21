@@ -8,6 +8,7 @@ export const DEFAULT_PROFILES: Readonly<Record<string, ShellProfile>> = {
     singleArgs: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command'],
     allowSingle: true,
     allowPty: true,
+    encoding: 'utf-8',
   },
   windowsPowerShell: {
     kind: 'powershell',
@@ -16,6 +17,7 @@ export const DEFAULT_PROFILES: Readonly<Record<string, ShellProfile>> = {
     singleArgs: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command'],
     allowSingle: true,
     allowPty: true,
+    encoding: 'utf-8',
   },
   cmd: {
     kind: 'cmd',
@@ -24,6 +26,7 @@ export const DEFAULT_PROFILES: Readonly<Record<string, ShellProfile>> = {
     singleArgs: ['/Q', '/D', '/S', '/C'],
     allowSingle: true,
     allowPty: true,
+    encoding: 'gb18030',
   },
 };
 

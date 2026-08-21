@@ -37,4 +37,31 @@ describe.skipIf(process.platform !== 'win32')('Windows shell profile integration
       await service.closeOwner(agent);
     }
   });
+
+  it.each([
+    ['pwsh7', "Write-Output '中文编码'"],
+    ['windowsPowerShell', "Write-Output '中文编码'"],
+    ['cmd', 'echo 中文编码'],
+  ])('decodes Chinese PTY output for %s', async (profile, source) => {
+    const service = new LocalBetterShellService(createDefaultConfig());
+    const agent = integrationAgent();
+    const session = await service.create(agent, { name: profile, profile });
+    try {
+      const operation = service.execute(agent, session.id, source);
+      const command = await Promise.race([
+        operation.done,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`${profile} Chinese integration timeout`));
+          }, 10_000);
+        }),
+      ]);
+      expect(command.status).toBe('completed');
+      expect(command.exitCode).toBe(0);
+      expect(command.output).toContain('中文编码');
+      expect(command.output).not.toContain('\uFFFD');
+    } finally {
+      await service.closeOwner(agent);
+    }
+  });
 });

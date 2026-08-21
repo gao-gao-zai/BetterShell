@@ -23,6 +23,10 @@ Use one of these exact `shell_profile` values:
 
 There are no `default`, `powershell`, `pwsh`, `bash`, `git-bash`, or `wsl` profiles in this plugin.
 
+## Output Encoding
+
+`pwsh7` and `windowsPowerShell` force UTF-8 output and decode as UTF-8, so non-ASCII text is returned intact on any Windows locale. `cmd` decodes using the system code page (GB18030 on Chinese Windows), so Chinese `cmd` output is correct on Chinese systems.
+
 ## Persistent Session Workflow
 
 Create a session first. Both `session_name` and `shell_profile` are required for `create`:
@@ -35,7 +39,7 @@ Create a session first. Both `session_name` and `shell_profile` are required for
 }
 ```
 
-Then execute through that session. In `execute` mode, pass `session_name` and do not pass `shell_profile`:
+Then execute through that session. In `execute` mode, pass `session_name` and do not pass `shell_profile`. Both `single` and persistent `execute` modes support `run_mode: "wait"` or `run_mode: "background"`; in wait mode, `wait_timeout_ms` controls how long the tool waits and expiry detaches without cancelling the command:
 
 ```json
 {
@@ -82,7 +86,7 @@ Write to a session. Pass exactly one of `text` or `control`; `control` is one of
 }
 ```
 
-Use `shell_session` with `operation: "list"` to list sessions. Use `shell_session` with `operation: "delete"` and `session_name` to close a session. Use `shell_session` with `operation: "cancel"` either with `task_id` for a single/background job or with both `session_name` and `command_id` for a persistent command.
+For persistent commands, a normal cancel sends `CTRL_C` and keeps the PTY alive when the shell acknowledges it. A forced cancel sends `CTRL_C`, waits briefly for confirmation, and closes the PTY only if the command remains running; after that fallback the session must be recreated.
 
 Read command output:
 
