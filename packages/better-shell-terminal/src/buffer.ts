@@ -80,7 +80,7 @@ export function readCursor(
   return {
     text: decoded,
     cursor: cursor + returnedBytes,
-    truncated: returnedBytes < source.length,
+    truncated: snapshot.truncated || returnedBytes < source.length,
     generation: snapshot.generation,
   };
 }

@@ -34,7 +34,7 @@ describe('readCursor', () => {
     expect(readCursor(buffer.snapshot(), 6, 0)).toMatchObject({
       text: '',
       cursor: 6,
-      truncated: false,
+      truncated: true,
     });
   });
 
@@ -64,6 +64,17 @@ describe('readCursor', () => {
       cursor: 5,
       truncated: true,
       generation: 0,
+    });
+  });
+
+  it('propagates head-drop truncation into the read result', () => {
+    const buffer = new BoundedText(4);
+    buffer.append('你好');
+    const snapshot = buffer.snapshot();
+    expect(snapshot.truncated).toBe(true);
+    expect(readCursor(snapshot, snapshot.baseBytes, 64)).toMatchObject({
+      text: '好',
+      truncated: true,
     });
   });
 });

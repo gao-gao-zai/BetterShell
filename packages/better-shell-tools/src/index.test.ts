@@ -396,6 +396,29 @@ describe('better-shell tool definitions', () => {
     });
   });
 
+  it('keeps the response output limit separate from the single process buffer', async () => {
+    const service = fakeShellService();
+    const items = definitions(new FakeJobs(), service);
+    const owner = agent();
+
+    await run(
+      tool(items, 'shell_execute'),
+      {
+        mode: 'single',
+        command: 'echo hi',
+        shell_profile: 'cmd',
+        run_mode: 'background',
+        max_output_bytes: 300,
+      },
+      owner,
+    );
+
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Vitest inspects the mock; it is not invoked detached.
+    const request = vi.mocked(service.startSingle).mock.calls[0]?.[1];
+    expect(request).toMatchObject({ command: 'echo hi', profile: 'cmd' });
+    expect(request).not.toHaveProperty('maxOutputBytes');
+  });
+
   it('does not start a PTY command when jobs preflight rejects registration', async () => {
     const jobs = new FakeJobs();
     const execute = vi.fn(() => operation());

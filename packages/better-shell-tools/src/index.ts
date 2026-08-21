@@ -593,7 +593,6 @@ function registerSingleJob(
         .startSingle(agent, {
           command,
           ...(profile === undefined ? {} : { profile }),
-          maxOutputBytes,
         })
         .then((process) => {
           singleProcess = process;
@@ -660,7 +659,7 @@ function registerPtyJob(
     run: () => {
       const commandOperation = ctx.betterShell.execute(agent, session, commandText);
       operation = commandOperation;
-      let cursor = 0;
+      let cursor: number | undefined;
       let timedOut = false;
       const stop = () => {
         void ctx.betterShell.cancelCommand(agent, session, commandOperation.id, true);
